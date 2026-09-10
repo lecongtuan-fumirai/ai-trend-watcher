@@ -10,6 +10,7 @@ import { BlogCollector } from './collectors/blogCollector.js';
 import { GitHubCollector } from './collectors/githubCollector.js';
 import { NewsCollector } from './collectors/newsCollector.js';
 
+import { filterByTimeWindow } from './pipeline/timeFilter.js';
 import { rankAndFilterTopK } from './pipeline/ranker.js';
 import { Deduplicator } from './pipeline/deduplicator.js';
 import { AIResearcher } from './agent/researcher.js';
@@ -78,9 +79,15 @@ async function main() {
 
   console.log(`>> Tổng số bài thu thập được: ${allItems.length}`);
 
+  // 2. Lọc chính xác theo cửa sổ thời gian 24h (mặc định: từ 25h trước đến 1h trước thời điểm chạy)
+  console.log(`\n[2/5] Lọc bài viết theo cửa sổ thời gian chính xác 24h...`);
+  const lookbackHours = parseInt(process.env.LOOKBACK_HOURS || '24', 10);
+  const bufferHours = parseInt(process.env.BUFFER_HOURS || '1', 10);
+  const timeFilteredItems = filterByTimeWindow(allItems, lookbackHours, bufferHours);
+
   // 3. Lọc và xếp hạng chỉ lấy Top K bài tốt nhất mỗi nguồn
-  console.log(`\n[2/4] Xếp hạng và chọn lọc Top ${topK} bài tốt nhất mỗi nguồn...`);
-  const topItems = rankAndFilterTopK(allItems, topK);
+  console.log(`\n[3/5] Xếp hạng và chọn lọc Top ${topK} bài tốt nhất mỗi nguồn...`);
+  const topItems = rankAndFilterTopK(timeFilteredItems, topK);
 
   // Nếu chỉ chạy test thu thập dữ liệu
   if (isTestCollect) {
@@ -93,7 +100,7 @@ async function main() {
   }
 
   // 4. Lọc trùng lặp (Deduplication)
-  console.log(`\n[3/4] Kiểm tra trùng lặp với lịch sử đã gửi...`);
+  console.log(`\n[4/5] Kiểm tra trùng lặp với lịch sử đã gửi...`);
   const deduplicator = new Deduplicator();
   const freshItems = isDryRun ? topItems : deduplicator.filterUnseen(topItems);
 
@@ -103,7 +110,7 @@ async function main() {
   }
 
   // 5. AI Research Agent tổng hợp theo 3 trụ cột (Summary, Insights, Trends)
-  console.log(`\n[4/4] Khởi động AI Research Agent chắt lọc tri thức...`);
+  console.log(`\n[5/5] Khởi động AI Research Agent chắt lọc tri thức...`);
   const researcher = new AIResearcher();
   let digestContent = '';
 

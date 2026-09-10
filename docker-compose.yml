@@ -1,0 +1,42 @@
+services:
+  # ============================================================================
+  # 1. Ứng dụng AI Trend Watcher
+  # ============================================================================
+  watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-trend-watcher:latest
+    container_name: ai_trend_watcher
+    restart: unless-stopped
+    # Container giữ trạng thái chờ (idle ~2MB RAM) để scheduler gọi lệnh vào chạy
+    command: ["tail", "-f", "/dev/null"]
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      # Mount thư mục cache ra máy chủ để giữ lịch sử chống trùng tin trong 7 ngày
+      - ./cache:/app/cache
+    labels:
+      ofelia.enabled: "true"
+      # Lịch chạy Ofelia: "Giây Phút Giờ Ngày Tháng Thứ" (6 trường)
+      # "0 0 7 * * *" = Đúng 07:00:00 sáng mỗi ngày theo giờ Việt Nam
+      ofelia.job-exec.watcher.schedule: "0 0 7 * * *"
+      ofelia.job-exec.watcher.command: "node src/main.js"
+
+  # ============================================================================
+  # 2. Bộ lập lịch Ofelia Scheduler (Tự động kích hoạt watcher mỗi ngày)
+  # ============================================================================
+  scheduler:
+    image: mcuadros/ofelia:latest
+    container_name: digest_scheduler
+    restart: unless-stopped
+    depends_on:
+      - watcher
+    command: daemon --docker
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      # Quyền đọc Docker socket để điều phối container
+      - /var/run/docker.sock:/var/run/docker.sock:ro

@@ -1,0 +1,30 @@
+{
+  "name": "ai-trend-watcher",
+  "version": "1.0.0",
+  "description": "Daily AI Trends & Builder Digest with Google Chat Webhook notification",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "dry-run": "node src/main.js --dry-run",
+    "test-notify": "node src/main.js --test-notify",
+    "test-collect": "node src/main.js --test-collect"
+  },
+  "keywords": [
+    "ai",
+    "trends",
+    "builders",
+    "digest",
+    "google-chat",
+    "crawler"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "js-yaml": "^4.1.0",
+    "openai": "^4.86.1",
+    "rss-parser": "^3.13.0",
+    "youtube-transcript": "^1.2.1"
+  }
+}

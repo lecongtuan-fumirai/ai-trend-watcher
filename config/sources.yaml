@@ -1,0 +1,66 @@
+# =================================================================
+# Danh Sách Nguồn Dữ Liệu Theo Dõi Xu Hướng & Builders AI (Curated)
+# =================================================================
+
+# 1. Curated AI Builders trên X (Twitter)
+x_builders:
+  feed_url: "https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-x.json"
+
+# 2. YouTube & AI Podcasts (Lấy từ default-sources.json của follow-builders)
+youtube_podcasts:
+  feed_url: "https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-podcasts.json"
+  channels:
+    - name: "Latent Space"
+      rss: "https://api.substack.com/feed/podcast/1084089.rss"
+      url: "https://www.youtube.com/@LatentSpacePod"
+    - name: "Training Data"
+      rss: "https://feeds.megaphone.fm/trainingdata"
+      url: "https://www.youtube.com/playlist?list=PLOhHNjZItNnMm5tdW61JpnyxeYH5NDDx8"
+    - name: "No Priors (Sarah Guo & Elad Gil)"
+      rss: "https://feeds.megaphone.fm/nopriors"
+      url: "https://www.youtube.com/@NoPriorsPodcast"
+    - name: "AI & I by Every (Dan Shipper)"
+      rss: "https://anchor.fm/s/ed1f5584/podcast/rss"
+      url: "https://www.youtube.com/playlist?list=PLuMcoKK9mKgHtW_o9h5sGO2vXrffKHwJL"
+    - name: "The MAD Podcast (Matt Turck)"
+      rss: "https://anchor.fm/s/f2ee4948/podcast/rss"
+      url: "https://www.youtube.com/@DataDrivenNYC/videos"
+
+# 3. Reddit AI Subreddits (Dùng RSS chuẩn)
+reddit_subreddits:
+  - name: "r/LocalLLaMA"
+    rss: "https://www.reddit.com/r/LocalLLaMA/top/.rss?t=day"
+    description: "Cộng đồng chạy model cục bộ, fine-tuning, quant, vLLM, Ollama"
+  - name: "r/MachineLearning"
+    rss: "https://www.reddit.com/r/MachineLearning/top/.rss?t=day"
+    description: "Nghiên cứu hàn lâm, papers, kiến trúc mô hình mới"
+  - name: "r/OpenAI"
+    rss: "https://www.reddit.com/r/OpenAI/top/.rss?t=day"
+    description: "Thảo luận cập nhật OpenAI APIs và sản phẩm mới"
+
+# 4. Tech & Research Blogs (AI Labs & Elite Engineers)
+tech_blogs:
+  - name: "OpenAI News & Research"
+    rss: "https://openai.com/news/rss.xml"
+  - name: "Google DeepMind Blog"
+    rss: "https://deepmind.google/blog/rss.xml"
+  - name: "Hugging Face Blog"
+    rss: "https://huggingface.co/blog/feed.xml"
+  - name: "Simon Willison Weblog"
+    rss: "https://simonwillison.net/atom/everything/"
+  - name: "Lilian Weng (OpenAI Safety Lead)"
+    rss: "https://lilianweng.github.io/index.xml"
+  - name: "Eugene Yan (Amazon Applied Scientist)"
+    rss: "https://eugeneyan.com/rss/"
+  - name: "Chip Huyen (AI Engineering)"
+    rss: "https://huyenchip.com/feed.xml"
+
+# 5. GitHub Trending AI Repositories
+github_trending:
+  search_queries:
+    - "topic:llm pushed:>now-2d stars:>50"
+    - "topic:ai-agent pushed:>now-2d stars:>50"
+
+# 6. Google News AI RSS
+google_news:
+  rss: "https://news.google.com/rss/search?q=%22Artificial+Intelligence%22+OR+%22Large+Language+Model%22+OR+%22AI+Agent%22+when:24h&hl=en-US&gl=US&ceid=US:en"

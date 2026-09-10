@@ -1,0 +1,141 @@
+import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
+import yaml from 'js-yaml';
+
+import { XCollector } from './collectors/xCollector.js';
+import { YouTubeCollector } from './collectors/youtubeCollector.js';
+import { RedditCollector } from './collectors/redditCollector.js';
+import { BlogCollector } from './collectors/blogCollector.js';
+import { GitHubCollector } from './collectors/githubCollector.js';
+import { NewsCollector } from './collectors/newsCollector.js';
+
+import { rankAndFilterTopK } from './pipeline/ranker.js';
+import { Deduplicator } from './pipeline/deduplicator.js';
+import { AIResearcher } from './agent/researcher.js';
+import { GoogleChatNotifier } from './notifiers/googleChat.js';
+
+// Đọc cấu hình các nguồn theo dõi
+function loadSourcesConfig() {
+  const configPath = path.resolve('config/sources.yaml');
+  if (!fs.existsSync(configPath)) {
+    throw new Error(`Không tìm thấy file cấu hình tại: ${configPath}`);
+  }
+  const fileContent = fs.readFileSync(configPath, 'utf-8');
+  return yaml.load(fileContent);
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const isTestNotify = args.includes('--test-notify');
+  const isTestCollect = args.includes('--test-collect');
+  const isDryRun = args.includes('--dry-run');
+
+  console.log('====================================================');
+  console.log('  AI TREND WATCHER & BUILDER DIGEST PIPELINE');
+  console.log('====================================================');
+
+  // 1. Chế độ kiểm tra kết nối Google Chat Webhook
+  if (isTestNotify) {
+    console.log('[Mode] Kiểm tra kết nối Google Chat Webhook...');
+    const notifier = new GoogleChatNotifier();
+    try {
+      await notifier.sendTestMessage();
+      console.log('>> [SUCCESS] Đã gửi tin nhắn thử nghiệm thành công tới Google Chat!');
+    } catch (err) {
+      console.error('>> [FAILED] Lỗi khi gửi webhook:', err.message);
+    }
+    return;
+  }
+
+  // 2. Tải cấu hình và khởi tạo các Collectors
+  const sourcesConfig = loadSourcesConfig();
+  const topK = parseInt(process.env.TOP_K_PER_SOURCE || '10', 10);
+
+  const collectors = [
+    new XCollector(sourcesConfig.x_builders),
+    new YouTubeCollector(sourcesConfig.youtube_podcasts),
+    new RedditCollector(sourcesConfig.reddit_subreddits),
+    new BlogCollector(sourcesConfig.tech_blogs),
+    new GitHubCollector(sourcesConfig.github_trending),
+    new NewsCollector(sourcesConfig.google_news)
+  ];
+
+  console.log(`\n[1/4] Bắt đầu thu thập dữ liệu từ ${collectors.length} nguồn...`);
+  const allItems = [];
+
+  // Thu thập song song từ tất cả các nguồn với cơ chế chịu lỗi (Fault-tolerant)
+  const results = await Promise.allSettled(collectors.map(c => c.collect()));
+  for (let i = 0; i < results.length; i++) {
+    const res = results[i];
+    const collectorName = collectors[i].name;
+    if (res.status === 'fulfilled') {
+      allItems.push(...res.value);
+    } else {
+      console.error(`[Collector Error] Nguồn [${collectorName}] thất bại:`, res.reason?.message || res.reason);
+    }
+  }
+
+  console.log(`>> Tổng số bài thu thập được: ${allItems.length}`);
+
+  // 3. Lọc và xếp hạng chỉ lấy Top K bài tốt nhất mỗi nguồn
+  console.log(`\n[2/4] Xếp hạng và chọn lọc Top ${topK} bài tốt nhất mỗi nguồn...`);
+  const topItems = rankAndFilterTopK(allItems, topK);
+
+  // Nếu chỉ chạy test thu thập dữ liệu
+  if (isTestCollect) {
+    console.log(`\n>> [Mode: Test Collect] Kết quả Top ${topItems.length} bài được chọn:`);
+    topItems.forEach((item, idx) => {
+      console.log(`${idx + 1}. [${item.source.toUpperCase()}] ${item.title}`);
+      console.log(`   Link: ${item.url} (Score: ${item.score})`);
+    });
+    return;
+  }
+
+  // 4. Lọc trùng lặp (Deduplication)
+  console.log(`\n[3/4] Kiểm tra trùng lặp với lịch sử đã gửi...`);
+  const deduplicator = new Deduplicator();
+  const freshItems = isDryRun ? topItems : deduplicator.filterUnseen(topItems);
+
+  if (freshItems.length === 0) {
+    console.log('>> Không có bài viết mới nào cần tổng hợp hôm nay. Kết thúc pipeline.');
+    return;
+  }
+
+  // 5. AI Research Agent tổng hợp theo 3 trụ cột (Summary, Insights, Trends)
+  console.log(`\n[4/4] Khởi động AI Research Agent chắt lọc tri thức...`);
+  const researcher = new AIResearcher();
+  let digestContent = '';
+
+  try {
+    digestContent = await researcher.generateDigest(freshItems);
+  } catch (err) {
+    console.error('>> [AI Error] Không thể tổng hợp bản tin:', err.message);
+    return;
+  }
+
+  // 6. Gửi kết quả hoặc in ra terminal
+  if (isDryRun) {
+    console.log('\n================ BẢN TIN XUẤT RA (DRY-RUN) ================');
+    console.log(digestContent);
+    console.log('==========================================================');
+    console.log('>> [DRY-RUN] Hoàn tất, không gửi webhook và không lưu cache.');
+    return;
+  }
+
+  // Gửi tới Google Chat Webhook
+  try {
+    const notifier = new GoogleChatNotifier();
+    await notifier.sendDigest(digestContent);
+    // Đánh dấu các bài đã gửi vào cache để tránh lặp lại ngày mai
+    deduplicator.markAsSent(freshItems);
+    console.log('>> [PIPELINE HOÀN TẤT] Bản tin đã được bắn thành công về Google Chat Space!');
+  } catch (err) {
+    console.error('>> [Dispatch Error] Lỗi khi gửi bản tin tới Google Chat:', err.message);
+  }
+}
+
+main().catch(err => {
+  console.error('[Fatal Error]:', err);
+  process.exit(1);
+});

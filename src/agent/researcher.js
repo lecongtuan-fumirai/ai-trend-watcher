@@ -47,7 +47,7 @@ export class AIResearcher {
    * Gọi Google Gemini API:
    * 1. Ưu tiên mặc định: gemini-3.8-flash
    * 2. Nếu 503 (quá tải) hoặc 429 (quota rate-limit): tự động fallback qua gemini-3.7-flash, gemini-3.5-flash
-   * 3. Fallback cuối cùng: Lưu prompt ra file cache/pending_prompt.txt để Antigravity/User xử lý
+   * 3. Giới hạn thinkingBudget để không bị suy nghĩ ngầm nuốt hết token (tránh bị cụt chữ)
    */
   async callGeminiWithFallback(userPrompt, dateStr) {
     const modelsToTry = [
@@ -103,7 +103,10 @@ export class AIResearcher {
       ],
       generationConfig: {
         temperature: 0.3,
-        maxOutputTokens: 4000
+        maxOutputTokens: 8192,
+        thinkingConfig: {
+          thinkingBudget: 512 // Giới hạn thinking budget 512 tokens để dành trọn vẹn output cho nội dung bản tin
+        }
       }
     };
 

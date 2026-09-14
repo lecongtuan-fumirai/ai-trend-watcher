@@ -150,7 +150,11 @@ async function main() {
   }
 }
 
-main().catch(err => {
-  console.error('[Fatal Error]:', err);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch(err => {
+    console.error('[Fatal Error]:', err);
+    process.exit(1);
+  });

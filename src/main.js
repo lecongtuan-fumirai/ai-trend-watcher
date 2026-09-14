@@ -27,6 +27,14 @@ function loadSourcesConfig() {
 }
 
 async function main() {
+  // Watchdog an toàn: Tự động ngắt tiến trình nếu vượt quá 6 phút để chống treo container
+  const WATCHDOG_TIMEOUT_MS = 6 * 60 * 1000;
+  const watchdog = setTimeout(() => {
+    console.error(`\n[FATAL TIMEOUT] Toàn bộ pipeline vượt quá ${WATCHDOG_TIMEOUT_MS / 1000}s. Cưỡng chế thoát.`);
+    process.exit(1);
+  }, WATCHDOG_TIMEOUT_MS);
+  watchdog.unref();
+
   const args = process.argv.slice(2);
   const isTestNotify = args.includes('--test-notify');
   const isTestCollect = args.includes('--test-collect');

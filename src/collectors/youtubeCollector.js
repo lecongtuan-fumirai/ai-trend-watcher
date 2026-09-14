@@ -36,15 +36,19 @@ export class YouTubeCollector extends BaseCollector {
           const videoUrl = entry.link || `https://www.youtube.com/watch?v=${videoId}`;
           let transcriptText = '';
 
-          // Cố gắng bóc tách transcript nếu có
+          // Cố gắng bóc tách transcript nếu có (kèm timeout 10s tránh treo)
           if (videoId) {
             try {
-              const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+              const transcriptPromise = YoutubeTranscript.fetchTranscript(videoId);
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Transcript timeout 10s')), 10000)
+              );
+              const transcript = await Promise.race([transcriptPromise, timeoutPromise]);
               if (transcript && transcript.length > 0) {
                 transcriptText = transcript.map(t => t.text).join(' ').slice(0, 3000);
               }
             } catch (tErr) {
-              // Bỏ qua nếu video không bật caption
+              // Bỏ qua nếu video không bật caption hoặc timeout
             }
           }
 

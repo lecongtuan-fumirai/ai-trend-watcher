@@ -110,11 +110,26 @@ export class AIResearcher {
       }
     };
 
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    // Timeout 90s cho mỗi request gọi model để chống treo tiến trình
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90000);
+
+    let res;
+    try {
+      res = await fetch(endpoint, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (fetchErr) {
+      if (fetchErr.name === 'AbortError') {
+        throw new Error(`Gemini API Request timed out sau 90s cho model [${modelName}]`);
+      }
+      throw fetchErr;
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!res.ok) {
       const errorText = await res.text();
@@ -123,7 +138,7 @@ export class AIResearcher {
 
     const data = await res.json();
     const candidate = data.candidates?.[0];
-    const text = candidate?.content?.parts?.[0]?.text;
+    const text = candidate?.content?.parts?.map(p => p.text || '').join('');
 
     if (!text) {
       throw new Error('Gemini không trả về nội dung kết quả hợp lệ.');
@@ -138,7 +153,8 @@ export class AIResearcher {
   async callOpenAI(userPrompt) {
     const openai = new OpenAI({
       apiKey: this.apiKey,
-      baseURL: process.env.OPENAI_BASE_URL || undefined
+      baseURL: process.env.OPENAI_BASE_URL || undefined,
+      timeout: 90000 // Timeout 90s chống treo
     });
 
     const completion = await openai.chat.completions.create({

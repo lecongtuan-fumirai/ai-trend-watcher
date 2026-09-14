@@ -62,13 +62,27 @@ export class GoogleChatNotifier {
       text: messageText
     };
 
-    const res = await fetch(this.webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json; charset=UTF-8'
-      },
-      body: JSON.stringify(payload)
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+
+    let res;
+    try {
+      res = await fetch(this.webhookUrl, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8'
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        throw new Error('Google Chat Webhook request timed out sau 20s');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!res.ok) {
       const errBody = await res.text();

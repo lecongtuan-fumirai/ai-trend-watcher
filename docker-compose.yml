@@ -16,13 +16,17 @@ services:
     environment:
       - TZ=Asia/Ho_Chi_Minh
     volumes:
+      # Mount mã nguồn và cấu hình để code luôn đồng bộ mới nhất
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./prompts:/app/prompts
       # Mount thư mục cache ra máy chủ để giữ lịch sử chống trùng tin trong 7 ngày
       - ./cache:/app/cache
     labels:
       ofelia.enabled: "true"
       # Lịch chạy Ofelia: "Giây Phút Giờ Ngày Tháng Thứ" (6 trường)
-      # "0 0 7 * * *" = Đúng 07:00:00 sáng mỗi ngày theo giờ Việt Nam
-      ofelia.job-exec.watcher.schedule: "0 0 7 * * *"
+      # "0 0 9 * * *" = Đúng 09:00:00 sáng mỗi ngày theo giờ Việt Nam
+      ofelia.job-exec.watcher.schedule: "0 0 9 * * *"
       ofelia.job-exec.watcher.command: "node src/main.js"
 
   # ============================================================================

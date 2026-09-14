@@ -38,19 +38,23 @@ async function main() {
   const args = process.argv.slice(2);
   const isTestNotify = args.includes('--test-notify');
   const isTestCollect = args.includes('--test-collect');
+  const isTestPipeline = args.includes('--test-pipeline');
   const isDryRun = args.includes('--dry-run');
+  const isForceProd = args.includes('--force-prod');
 
   console.log('====================================================');
   console.log('  AI TREND WATCHER & BUILDER DIGEST PIPELINE');
+  if (isTestPipeline) console.log('  [CHẾ ĐỘ KIỂM THỬ]: TEST PIPELINE (Không lưu cache, ưu tiên Test Space)');
+  if (isDryRun)       console.log('  [CHẾ ĐỘ KIỂM THỬ]: DRY-RUN (Chỉ in ra màn hình, không gửi tin)');
   console.log('====================================================');
 
   // 1. Chế độ kiểm tra kết nối Google Chat Webhook
   if (isTestNotify) {
     console.log('[Mode] Kiểm tra kết nối Google Chat Webhook...');
-    const notifier = new GoogleChatNotifier();
+    const notifier = new GoogleChatNotifier({ isTest: true, forceProd: isForceProd });
     try {
       await notifier.sendTestMessage();
-      console.log('>> [SUCCESS] Đã gửi tin nhắn thử nghiệm thành công tới Google Chat!');
+      console.log('>> [HOÀN TẤT] Tiến trình kiểm tra Webhook kết thúc.');
     } catch (err) {
       console.error('>> [FAILED] Lỗi khi gửi webhook:', err.message);
     }
@@ -110,7 +114,8 @@ async function main() {
   // 4. Lọc trùng lặp (Deduplication)
   console.log(`\n[4/5] Kiểm tra trùng lặp với lịch sử đã gửi...`);
   const deduplicator = new Deduplicator();
-  const freshItems = isDryRun ? topItems : deduplicator.filterUnseen(topItems);
+  const isTestMode = isDryRun || isTestPipeline;
+  const freshItems = isTestMode ? topItems : deduplicator.filterUnseen(topItems);
 
   if (freshItems.length === 0) {
     console.log('>> Không có bài viết mới nào cần tổng hợp hôm nay. Kết thúc pipeline.');
@@ -140,11 +145,19 @@ async function main() {
 
   // Gửi tới Google Chat Webhook
   try {
-    const notifier = new GoogleChatNotifier();
+    const notifier = new GoogleChatNotifier({
+      isTest: isTestPipeline,
+      forceProd: isForceProd
+    });
     await notifier.sendDigest(digestContent);
-    // Đánh dấu các bài đã gửi vào cache để tránh lặp lại ngày mai
-    deduplicator.markAsSent(freshItems);
-    console.log('>> [PIPELINE HOÀN TẤT] Bản tin đã được bắn thành công về Google Chat Space!');
+
+    if (!isTestMode) {
+      // Chỉ đánh dấu bài đã gửi vào cache khi chạy Production chính thức
+      deduplicator.markAsSent(freshItems);
+      console.log('>> [PIPELINE HOÀN TẤT] Bản tin đã được bắn thành công về Google Chat Space!');
+    } else {
+      console.log('>> [TEST MODE HOÀN TẤT] Đã bảo toàn cache sent_items.json cho lịch chạy chính thức.');
+    }
   } catch (err) {
     console.error('>> [Dispatch Error] Lỗi khi gửi bản tin tới Google Chat:', err.message);
   }

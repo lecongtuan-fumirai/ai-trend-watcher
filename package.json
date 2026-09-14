@@ -7,8 +7,10 @@
   "scripts": {
     "start": "node src/main.js",
     "dry-run": "node src/main.js --dry-run",
-    "test-notify": "node src/main.js --test-notify",
-    "test-collect": "node src/main.js --test-collect"
+    "test:pipeline": "node src/main.js --test-pipeline",
+    "test:collect": "node src/main.js --test-collect",
+    "test:notify": "node src/main.js --test-notify",
+    "test:notify:prod": "node src/main.js --test-notify --force-prod"
   },
   "keywords": [
     "ai",

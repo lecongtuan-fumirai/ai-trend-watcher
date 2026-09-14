@@ -1,9 +1,31 @@
+import fs from 'fs';
+import path from 'path';
+
 /**
  * Module gửi tin nhắn đến Google Chat Incoming Webhook
  */
 export class GoogleChatNotifier {
-  constructor(webhookUrl) {
-    this.webhookUrl = webhookUrl || process.env.GOOGLE_CHAT_WEBHOOK_URL;
+  constructor(options = {}) {
+    // Cho phép truyền string URL (tương thích ngược) hoặc object options
+    if (typeof options === 'string') {
+      this.webhookUrl = options;
+      this.isTest = false;
+      this.forceProd = false;
+      this.targetName = 'CUSTOM_URL';
+    } else {
+      this.isTest = !!options.isTest;
+      this.forceProd = !!options.forceProd;
+      this.testWebhookUrl = process.env.GOOGLE_CHAT_TEST_WEBHOOK_URL || '';
+      this.prodWebhookUrl = process.env.GOOGLE_CHAT_WEBHOOK_URL || '';
+
+      if (this.isTest && !this.forceProd) {
+        this.webhookUrl = this.testWebhookUrl;
+        this.targetName = this.testWebhookUrl ? 'TEST SPACE (GOOGLE_CHAT_TEST_WEBHOOK_URL)' : 'NONE';
+      } else {
+        this.webhookUrl = this.prodWebhookUrl;
+        this.targetName = 'PRODUCTION SPACE (GOOGLE_CHAT_WEBHOOK_URL)';
+      }
+    }
   }
 
   /**
@@ -24,12 +46,33 @@ export class GoogleChatNotifier {
    * @param {string} rawText - Nội dung bản tin đã định dạng
    */
   async sendDigest(rawText) {
+    // 1. Kiểm tra an toàn: Nếu đang test mà chưa cấu hình test webhook
+    if (this.isTest && !this.webhookUrl) {
+      console.warn('\n=============================================================');
+      console.warn('⚠️  [CHẾ ĐỘ AN TOÀN]: Đang chạy ở chế độ TEST.');
+      console.warn('   Không tìm thấy biến GOOGLE_CHAT_TEST_WEBHOOK_URL trong .env.');
+      console.warn('   Hệ thống TỰ ĐỘNG CHẶN gửi vào Production để tránh spam kênh chính!');
+      console.warn('   Nội dung bản tin đã được lưu tại: cache/digest_test_preview.md');
+      console.warn('=============================================================\n');
+
+      const previewPath = path.resolve('cache/digest_test_preview.md');
+      fs.writeFileSync(previewPath, rawText, 'utf-8');
+      return;
+    }
+
     if (!this.webhookUrl) {
       throw new Error('Chưa cấu hình GOOGLE_CHAT_WEBHOOK_URL trong file .env');
     }
 
-    const text = this.formatForGoogleChat(rawText);
-    console.log(`[Google Chat] Đang chuẩn bị gửi bản tin tới Google Chat Space (${text.length} ký tự)...`);
+    let text = this.formatForGoogleChat(rawText);
+
+    // Gắn tag rõ ràng nếu gửi vào Test Space
+    if (this.isTest) {
+      text = `🧪 *[BẢN TIN THỬ NGHIỆM / TEST PIPELINE]*\n_⚠️ Tin nhắn kiểm thử kỹ thuật, không phải bản tin chính thức._\n\n${text}`;
+    }
+
+    console.log(`[Google Chat] Đích gửi: [${this.targetName}]`);
+    console.log(`[Google Chat] Đang chuẩn bị gửi bản tin tới Space (${text.length} ký tự)...`);
 
     // Phân đoạn an toàn theo Section (tối đa 3500 ký tự mỗi tin để Google Chat hiển thị trọn vẹn)
     const chunks = this.splitMessageBySection(text, 3600);
@@ -51,7 +94,7 @@ export class GoogleChatNotifier {
       }
     }
 
-    console.log(`[Google Chat] Hoàn tất gửi toàn bộ bản tin!`);
+    console.log(`[Google Chat] Hoàn tất gửi toàn bộ bản tin tới [${this.targetName}]!`);
   }
 
   /**
@@ -96,16 +139,30 @@ export class GoogleChatNotifier {
    * Bắn tin nhắn thử nghiệm kiểm tra kết nối webhook
    */
   async sendTestMessage() {
+    if (this.isTest && !this.webhookUrl) {
+      console.warn('\n=============================================================');
+      console.warn('⚠️  [CHẾ ĐỘ AN TOÀN]: Đang test kết nối Webhook.');
+      console.warn('   Chưa cấu hình GOOGLE_CHAT_TEST_WEBHOOK_URL trong file .env.');
+      console.warn('   Hệ thống TỰ ĐỘNG CHẶN gửi vào kênh chính để tránh spam!');
+      console.warn('   👉 Để test kênh chính thức, hãy chạy:');
+      console.warn('      npm run test-notify -- --force-prod');
+      console.warn('   👉 Hoặc thêm GOOGLE_CHAT_TEST_WEBHOOK_URL vào .env để test riêng.');
+      console.warn('=============================================================\n');
+      return;
+    }
+
+    const channelType = this.forceProd ? '🔴 PRODUCTION CHANNEL' : '🧪 TEST CHANNEL';
     const testText = `
 🔔 *AI TREND WATCHER | WEBHOOK TEST*
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Kết nối Google Chat Webhook thành công!
-Hệ thống sẵn sàng nhận bản tin AI Builder Digest mỗi ngày.
+• Đích nhận: *${channelType}*
 • Thời gian: ${new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
 • Trạng thái: ✅ Hoạt động ổn định
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `.trim();
 
+    console.log(`[Google Chat] Đang bắn tin nhắn test tới: [${this.targetName}]...`);
     return await this.postToWebhook(testText);
   }
 

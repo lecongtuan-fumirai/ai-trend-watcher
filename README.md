@@ -81,66 +81,74 @@ TOP_K_PER_SOURCE=10
 
 ---
 
-## 🚀 Các Lệnh Sử Dụng
+## 🚀 Bảng Tra Cứu Lệnh Sử Dụng (Commands Cheatsheet)
 
-### 1. Kiểm tra kết nối Google Chat Webhook:
-Bắn thử 1 tin nhắn test để xác nhận webhook hoạt động tốt:
+Dự án phân tách rạch ròi giữa **Lệnh Test an toàn (không spam kênh chính)** và **Lệnh chạy Production chính thức**:
+
+| Lệnh (NPM) | Chạy trong Docker Container | Đích nhận | Ảnh hưởng kênh chính? | Mô tả chức năng |
+| :--- | :--- | :--- | :---: | :--- |
+| `npm run dry-run` | `docker exec ai_trend_watcher npm run dry-run` | **Terminal Only** | ❌ Không | Cào dữ liệu, AI tổng hợp bản tin và in ra màn hình. Không gọi Webhook, không lưu cache. |
+| `npm run test:collect` | `docker exec ai_trend_watcher npm run test:collect` | **Terminal Only** | ❌ Không | Chỉ test cào tin từ 6 nguồn & chấm điểm Top 10. Không tốn token AI. |
+| `npm run test:notify` | `docker exec ai_trend_watcher npm run test:notify` | **Test Space** (hoặc chặn) | ❌ Không | Bắn 1 tin test kết nối Webhook. **Tự động chặn** nếu chưa cấu hình `GOOGLE_CHAT_TEST_WEBHOOK_URL` để bảo vệ kênh chính. |
+| `npm run test:pipeline` | `docker exec ai_trend_watcher npm run test:pipeline` | **Test Space** (hoặc file preview) | ❌ Không | Test trọn vẹn luồng cào tin + AI tổng hợp ➔ bắn vào kênh Test (kèm tag `🧪 [TEST]`). Không làm bẩn cache `sent_items.json`. |
+| `npm run test:notify:prod` | `docker exec ai_trend_watcher npm run test:notify:prod` | **Production Space** | ⚠️ Có | **Cố tình test gửi vào kênh chính**: Phải thêm cờ `--force-prod` tường minh mới gửi được. |
+| **`npm start`** *(hoặc `node src/main.js`)* | **`docker exec ai_trend_watcher node src/main.js`** | **Production Space** | ✅ **Kênh Chính** | **Lệnh chạy chính thức**: Cào tin, AI tổng hợp, bắn trọn vẹn bản tin vào kênh chính và lưu cache chống trùng 7 ngày. |
+
+---
+
+### Chi tiết các chế độ chạy:
+
+#### 1. Chạy thử nghiệm toàn bộ luồng an toàn (Khuyên dùng khi dev):
 ```bash
-npm run test-notify
-```
+# Trên máy Local:
+npm run test:pipeline
 
-### 2. Kiểm tra cào tin (Không tốn token AI):
-Xem thử 6 nguồn cào được bao nhiêu bài và Top 10 bài được chọn lọc:
-```bash
-npm run test-collect
+# Hoặc khi đang chạy Docker:
+docker exec ai_trend_watcher npm run test:pipeline
 ```
+* Nếu có `GOOGLE_CHAT_TEST_WEBHOOK_URL`: Bản tin sẽ được gửi vào kênh Test riêng.
+* Nếu chưa có `GOOGLE_CHAT_TEST_WEBHOOK_URL`: Hệ thống tự động chặn gửi và lưu bản tin xem trước tại `cache/digest_test_preview.md`.
+* Cache `sent_items.json` được giữ nguyên để không ảnh hưởng đến lượt chạy thật lúc 9h sáng.
 
-### 3. Chạy thử nghiệm AI (Dry-Run):
-Cào tin, gọi AI tóm tắt và in toàn bộ bản tin ra Terminal (không gửi Google Chat, không lưu cache):
+#### 2. Chạy thử nghiệm AI không gửi tin (Dry-Run):
 ```bash
 npm run dry-run
+# Trong Docker: docker exec ai_trend_watcher npm run dry-run
 ```
 
-### 4. Chạy chính thức:
-Cào tin, gọi AI, bắn bản tin về Google Chat và lưu cache chống trùng lặp:
+#### 3. Chạy chính thức ngay lập tức (Manual Trigger Production):
 ```bash
-npm run start
-# hoặc: node src/main.js
+npm start
+# Trong Docker: docker exec ai_trend_watcher node src/main.js
 ```
 
 ---
 
-## ⏰ Tự Động Hóa Chạy Hàng Ngày
+## ⏰ Tự Động Hóa Chạy Hàng Ngày (09:00 Sáng Mỗi Ngày)
 
-### Cách 1: Chạy miễn phí 100% bằng GitHub Actions (Khuyên dùng)
-Dự án đã có sẵn file `.github/workflows/daily_digest.yml`. Bạn chỉ cần:
-1. Đẩy repo lên GitHub.
-2. Vào **Settings** -> **Secrets and variables** -> **Actions** -> Thêm:
-   - `AI_API_KEY`: API key của bạn.
-   - `GOOGLE_CHAT_WEBHOOK_URL`: Webhook URL của Google Chat.
-3. Hệ thống sẽ tự động chạy vào **07:00 sáng mỗi ngày (giờ Việt Nam)** và tự động commit cache chống trùng lặp.
-
-### Cách 2: Chạy bằng Cron trên Linux/VPS hoặc Windows Task Scheduler
-Thêm vào `crontab -e`:
-```bash
-0 7 * * * cd /path/to/ai-trend-watcher && /usr/bin/node src/main.js >> digest.log 2>&1
-```
-
-### Cách 3: Chạy bằng Docker & Docker Compose
-**1. Khởi động hệ thống tự động chạy 07:00 sáng mỗi ngày:**
+### Cách 1: Chạy bằng Docker & Docker Compose (Khuyên dùng cho Server / Local)
+**1. Khởi động hệ thống tự động chạy 09:00 sáng mỗi ngày:**
 ```bash
 docker compose up -d
 ```
-*(Cụm bao gồm `ai_trend_watcher` và scheduler `ofelia` siêu nhẹ tự động kích hoạt container mỗi ngày).*
+*(Cụm gồm container `ai_trend_watcher` và bộ lập lịch `digest_scheduler` (Ofelia) tự động kích hoạt `node src/main.js` đúng 09:00:00 sáng theo giờ Việt Nam).*
 
-**2. Chạy thử nghiệm ngay lập tức (Test / Dry-Run):**
+**2. Theo dõi log lập lịch:**
 ```bash
-# Chạy 1 lần thử nghiệm không gửi Google Chat:
-docker compose exec watcher npm run dry-run
-
-# Chạy chính thức ngay lập tức (khi container đang chạy):
-docker compose exec watcher node src/main.js
+docker logs digest_scheduler --tail 20 -f
 ```
+
+### Cách 2: Tự động đánh thức trên Windows khi máy đang Sleep (Windows Task Scheduler)
+Trên máy Windows cá nhân, nếu máy bị Sleep hoặc tắt nguồn lúc 9h sáng:
+* Hệ thống đã tích hợp sẵn script [scripts/trigger-digest.ps1](scripts/trigger-digest.ps1) đi kèm Windows Task Scheduler với 2 cờ:
+  * `-WakeToRun`: Tự động đánh thức máy tính dậy lúc 09:00 AM để chạy.
+  * `-StartWhenAvailable`: Tự động chạy bù bản tin ngay khi mở máy nếu lỡ khung giờ 9h.
+
+### Cách 3: Chạy miễn phí bằng GitHub Actions
+Dự án có sẵn file `.github/workflows/daily_digest.yml`. Thiết lập secret trong repo:
+* `AI_API_KEY`: API key của Gemini hoặc OpenAI.
+* `GOOGLE_CHAT_WEBHOOK_URL`: Webhook URL của Google Chat kênh chính.
+Lịch chạy mặc định: **09:00 sáng mỗi ngày (giờ Việt Nam)**.
 
 ---
 

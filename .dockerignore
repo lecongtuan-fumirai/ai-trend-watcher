@@ -2,7 +2,8 @@ node_modules
 .env
 .env.*
 !.env.example
-cache/*.json
+cache/*
+!cache/.gitkeep
 .git
 .github
 *.log

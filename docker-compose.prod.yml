@@ -1,7 +1,4 @@
 services:
-  # ============================================================================
-  # 1. Ứng dụng AI Trend Watcher (Pull trực tiếp từ Docker Hub)
-  # ============================================================================
   watcher:
     image: tuanstark/ai-trend-watcher:latest
     container_name: ai_trend_watcher
@@ -12,17 +9,12 @@ services:
     environment:
       - TZ=Asia/Ho_Chi_Minh
     volumes:
-      # Chỉ mount cache để lưu vết các bài đã gửi (bảo toàn lịch sử chống trùng lặp)
       - ./cache:/app/cache
     labels:
       ofelia.enabled: "true"
-      # Lịch chạy Ofelia: "0 0 9 * * *" = Đúng 09:00:00 sáng mỗi ngày (Giờ VN)
       ofelia.job-exec.watcher.schedule: "0 0 9 * * *"
       ofelia.job-exec.watcher.command: "node src/main.js"
 
-  # ============================================================================
-  # 2. Bộ lập lịch Ofelia Scheduler (Tự động kích hoạt watcher mỗi ngày)
-  # ============================================================================
   scheduler:
     image: mcuadros/ofelia:latest
     container_name: digest_scheduler
@@ -33,5 +25,4 @@ services:
     environment:
       - TZ=Asia/Ho_Chi_Minh
     volumes:
-      # Quyền đọc Docker socket để điều phối container
       - /var/run/docker.sock:/var/run/docker.sock:ro

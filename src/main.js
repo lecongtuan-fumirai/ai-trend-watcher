@@ -26,6 +26,44 @@ function loadSourcesConfig() {
   return yaml.load(fileContent);
 }
 
+// Cơ chế Atomic Lock chống chạy song song (race condition giữa nhiều scheduler)
+const LOCK_FILE = path.resolve('cache/pipeline.lock');
+const LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 phút
+
+function acquireLock() {
+  try {
+    const dir = path.dirname(LOCK_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const fd = fs.openSync(LOCK_FILE, 'wx');
+    fs.writeSync(fd, JSON.stringify({ pid: process.pid, time: Date.now() }));
+    fs.closeSync(fd);
+    return true;
+  } catch (err) {
+    if (err.code === 'EEXIST') {
+      try {
+        const stats = fs.statSync(LOCK_FILE);
+        if (Date.now() - stats.mtimeMs > LOCK_TIMEOUT_MS) {
+          console.warn('[Lock] Phát hiện lock cũ quá hạn (>10 phút). Ghi đè lock mới...');
+          fs.unlinkSync(LOCK_FILE);
+          return acquireLock();
+        }
+      } catch (_) {}
+      return false;
+    }
+    throw err;
+  }
+}
+
+function releaseLock() {
+  try {
+    if (fs.existsSync(LOCK_FILE)) {
+      fs.unlinkSync(LOCK_FILE);
+    }
+  } catch (_) {}
+}
+
 async function main() {
   // Watchdog an toàn: Tự động ngắt tiến trình nếu vượt quá 6 phút để chống treo container
   const WATCHDOG_TIMEOUT_MS = 6 * 60 * 1000;
@@ -61,8 +99,30 @@ async function main() {
     return;
   }
 
-  // 2. Tải cấu hình và khởi tạo các Collectors
-  const sourcesConfig = loadSourcesConfig();
+  // 2. Kiểm tra khóa độc quyền (Atomic Lock) để chống bắn đúp khi cả 2 scheduler cùng gọi
+  let hasLock = false;
+  if (!isTestCollect) {
+    if (!acquireLock()) {
+      console.log('\n>> [CHỐNG TRÙNG LẶP] Một tiến trình AI Trend Watcher khác đang chạy pipeline.');
+      console.log('>> Tự động hủy lượt chạy này để bảo vệ kênh chat không bị bắn đúp tin!');
+      return;
+    }
+    hasLock = true;
+  }
+
+  const cleanup = () => {
+    if (hasLock) {
+      releaseLock();
+      hasLock = false;
+    }
+  };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+  process.on('exit', cleanup);
+
+  try {
+    // 2. Tải cấu hình và khởi tạo các Collectors
+    const sourcesConfig = loadSourcesConfig();
   const topK = parseInt(process.env.TOP_K_PER_SOURCE || '10', 10);
 
   const collectors = [
@@ -143,23 +203,26 @@ async function main() {
     return;
   }
 
-  // Gửi tới Google Chat Webhook
-  try {
-    const notifier = new GoogleChatNotifier({
-      isTest: isTestPipeline,
-      forceProd: isForceProd
-    });
-    await notifier.sendDigest(digestContent);
+    // Gửi tới Google Chat Webhook
+    try {
+      const notifier = new GoogleChatNotifier({
+        isTest: isTestPipeline,
+        forceProd: isForceProd
+      });
+      await notifier.sendDigest(digestContent);
 
-    if (!isTestMode) {
-      // Chỉ đánh dấu bài đã gửi vào cache khi chạy Production chính thức
-      deduplicator.markAsSent(freshItems);
-      console.log('>> [PIPELINE HOÀN TẤT] Bản tin đã được bắn thành công về Google Chat Space!');
-    } else {
-      console.log('>> [TEST MODE HOÀN TẤT] Đã bảo toàn cache sent_items.json cho lịch chạy chính thức.');
+      if (!isTestMode) {
+        // Chỉ đánh dấu bài đã gửi vào cache khi chạy Production chính thức
+        deduplicator.markAsSent(freshItems);
+        console.log('>> [PIPELINE HOÀN TẤT] Bản tin đã được bắn thành công về Google Chat Space!');
+      } else {
+        console.log('>> [TEST MODE HOÀN TẤT] Đã bảo toàn cache sent_items.json cho lịch chạy chính thức.');
+      }
+    } catch (err) {
+      console.error('>> [Dispatch Error] Lỗi khi gửi bản tin tới Google Chat:', err.message);
     }
-  } catch (err) {
-    console.error('>> [Dispatch Error] Lỗi khi gửi bản tin tới Google Chat:', err.message);
+  } finally {
+    cleanup();
   }
 }
 
